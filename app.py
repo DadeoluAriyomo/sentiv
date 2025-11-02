@@ -7,7 +7,8 @@ from datetime import datetime
 from PIL import Image
 import numpy as np
 from flask import Flask, render_template, request, jsonify, send_from_directory
-from tensorflow.keras.models import load_model
+# Use TFLite runtime for inference (low memory)
+import tflite_runtime.interpreter as tflite
 # Prefer MTCNN if available (stronger detector), otherwise fall back to OpenCV Haar cascade
 try:
     from mtcnn import MTCNN
@@ -26,7 +27,7 @@ except Exception:
 # ======================================================
 # ✅ STEP 1: Model Configuration (updated to best_fer_model.keras)
 # ======================================================
-MODEL_PATH = "best_fer_model.keras"  # updated model file
+MODEL_PATH = "best_fer_model.tflite"  # TFLite model file
 UPLOAD_FOLDER = os.path.join("static", "uploads")
 DB_PATH = "database_sentiv.db"
 ALLOWED_EXT = {'png', 'jpg', 'jpeg'}
@@ -44,18 +45,22 @@ EMOTIONS = ['Angry', 'Disgust', 'Fear', 'Happy', 'Neutral', 'Sad', 'Surprise']
 # ======================================================
 # ✅ STEP 1 (continued): Load model safely
 # ======================================================
+# Load TFLite model
 if os.path.exists(MODEL_PATH):
     try:
-        model = load_model(MODEL_PATH)
-        print("✅ Loaded model successfully.")
-        print("Model input shape:", model.input_shape)
-        print("Model output shape:", model.output_shape)
+        interpreter = tflite.Interpreter(model_path=MODEL_PATH)
+        interpreter.allocate_tensors()
+        input_details = interpreter.get_input_details()
+        output_details = interpreter.get_output_details()
+        print("✅ Loaded TFLite model successfully.")
+        print("Input details:", input_details)
+        print("Output details:", output_details)
     except Exception as e:
-        model = None
-        print(f"❌ Failed to load model: {e}")
+        interpreter = None
+        print(f"❌ Failed to load TFLite model: {e}")
 else:
-    model = None
-    print(f"❌ Model file {MODEL_PATH} not found.")
+    interpreter = None
+    print(f"❌ TFLite model file {MODEL_PATH} not found.")
 
 # ======================================================
 # Database Setup (unchanged)
@@ -191,10 +196,14 @@ def predict_upload():
         # save a debug version of the preprocessed image that the model sees
         debug_filename = f"debug_{filename}"
         arr = crop_and_preprocess(img, save_debug=True, debug_filename=debug_filename)
-        if model is None:
+
+        if interpreter is None:
             return jsonify({'error': 'Model not available on server'}), 500
 
-        preds = model.predict(arr)
+        # TFLite inference
+        interpreter.set_tensor(input_details[0]['index'], arr.astype(np.float32))
+        interpreter.invoke()
+        preds = interpreter.get_tensor(output_details[0]['index'])
         print("Raw predictions:", preds)  # DEBUG
         idx = int(np.argmax(preds))
         emotion = EMOTIONS[idx]
@@ -229,10 +238,13 @@ def predict_live():
     img = Image.open(io.BytesIO(image_data))
     debug_filename = f"debug_{filename}"
     arr = crop_and_preprocess(img, save_debug=True, debug_filename=debug_filename)
-    if model is None:
+
+    if interpreter is None:
         return jsonify({'error': 'Model not available on server'}), 500
 
-    preds = model.predict(arr)
+    interpreter.set_tensor(input_details[0]['index'], arr.astype(np.float32))
+    interpreter.invoke()
+    preds = interpreter.get_tensor(output_details[0]['index'])
     print("Raw predictions (live):", preds)  # DEBUG
     idx = int(np.argmax(preds))
     emotion = EMOTIONS[idx]
