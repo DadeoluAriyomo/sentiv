@@ -268,4 +268,10 @@ def stats():
     return jsonify({'counts': rows})
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # Read port from environment (Render provides PORT); default to 5000 locally
+    port = int(os.environ.get("PORT", 5000))
+    # Enable debug only when FLASK_DEBUG or APP_DEBUG env var is set to '1'
+    debug_env = os.environ.get("FLASK_DEBUG") or os.environ.get("APP_DEBUG")
+    debug = True if str(debug_env) == '1' else False
+    # Bind to 0.0.0.0 so Render (or other hosts) can route traffic
+    app.run(host='0.0.0.0', port=port, debug=debug)
