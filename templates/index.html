@@ -1,0 +1,217 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Sentiv — Emotion Detector</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <div class="diamond-bg">
+      <!-- multiple diamond spans for floating effect -->
+      <span class="diamond d1"></span>
+      <span class="diamond d2"></span>
+      <span class="diamond d3"></span>
+      <span class="diamond d4"></span>
+      <span class="diamond d5"></span>
+      <span class="diamond d6"></span>
+      <span class="diamond d7"></span>
+    </div>
+
+    <main class="container">
+      <header>
+        <h1 class="logo">Sentiv</h1>
+        <p class="tagline">Know your mood. Feel better.</p>
+      </header>
+
+      <section class="card">
+        <label class="field">
+          <span>Your name</span>
+          <input id="nameInput" type="text" placeholder="Enter your name" />
+        </label>
+
+        <div class="mode-select">
+          <button id="uploadMode" class="mode-btn active">Upload Image</button>
+          <button id="liveMode" class="mode-btn">Live Capture</button>
+        </div>
+
+        <div id="uploadArea" class="area active">
+          <input id="fileInput" type="file" accept="image/*" />
+          <button id="sendUpload" class="action">Analyze Upload</button>
+        </div>
+
+        <div id="liveArea" class="area">
+          <video id="video" autoplay playsinline></video>
+          <canvas
+            id="canvas"
+            width="480"
+            height="360"
+            style="display: none"
+          ></canvas>
+          <div class="live-controls">
+            <button id="startCam" class="action">Start Camera</button>
+            <button id="snap" class="action">Capture & Analyze</button>
+          </div>
+        </div>
+
+        <div id="result" class="resultBox" aria-live="polite">
+          <h2 id="resultTitle">Hello!</h2>
+          <p id="resultText">Enter your name, choose a mode and try Sentiv.</p>
+          <img
+            id="resultImage"
+            src=""
+            alt=""
+            style="
+              display: none;
+              max-width: 180px;
+              margin-top: 12px;
+              border-radius: 8px;
+            "
+          />
+        </div>
+      </section>
+      <footer>
+        <p>
+          Made with ❤️ by Dade. Sensitivity meets intuition — your mood,
+          visualized.
+        </p>
+      </footer>
+    </main>
+
+    <script>
+      /* JS: upload & live capture handlers */
+      const uploadModeBtn = document.getElementById("uploadMode");
+      const liveModeBtn = document.getElementById("liveMode");
+      const uploadArea = document.getElementById("uploadArea");
+      const liveArea = document.getElementById("liveArea");
+      const fileInput = document.getElementById("fileInput");
+      const sendUpload = document.getElementById("sendUpload");
+      const nameInput = document.getElementById("nameInput");
+
+      uploadModeBtn.onclick = () => {
+        uploadModeBtn.classList.add("active");
+        liveModeBtn.classList.remove("active");
+        uploadArea.classList.add("active");
+        liveArea.classList.remove("active");
+      };
+
+      liveModeBtn.onclick = () => {
+        liveModeBtn.classList.add("active");
+        uploadModeBtn.classList.remove("active");
+        liveArea.classList.add("active");
+        uploadArea.classList.remove("active");
+      };
+
+      function showResult(personName, emotion, confidence, feedback, filename) {
+        const title = document.getElementById("resultTitle");
+        const text = document.getElementById("resultText");
+        const img = document.getElementById("resultImage");
+
+        title.innerText = `${personName}, you're feeling ${emotion}`;
+        text.innerText = `${feedback} (confidence ${(confidence * 100).toFixed(
+          1
+        )}%)`;
+        if (filename) {
+          img.src = `/uploads/${filename}`;
+          img.style.display = "block";
+        }
+        // fun text animation
+        title.classList.remove("pop");
+        void title.offsetWidth;
+        title.classList.add("pop");
+        text.classList.remove("fade");
+        void text.offsetWidth;
+        text.classList.add("fade");
+      }
+
+      /* Upload flow */
+      sendUpload.onclick = async () => {
+        if (!fileInput.files[0]) {
+          alert("Choose an image first.");
+          return;
+        }
+        const form = new FormData();
+        form.append("image", fileInput.files[0]);
+        form.append("name", nameInput.value || "Anonymous");
+
+        const res = await fetch("/predict_upload", {
+          method: "POST",
+          body: form,
+        });
+        const data = await res.json();
+        if (res.ok && !data.error) {
+          showResult(
+            nameInput.value || "You",
+            data.emotion,
+            data.confidence,
+            data.feedback,
+            data.filename
+          );
+        } else {
+          alert(data.error || "Prediction failed");
+        }
+      };
+
+      /* Live capture */
+      let stream = null;
+      const video = document.getElementById("video");
+      const canvas = document.getElementById("canvas");
+      const startCam = document.getElementById("startCam");
+      const snap = document.getElementById("snap");
+
+      startCam.onclick = async () => {
+        if (stream) {
+          // stop
+          stream.getTracks().forEach((t) => t.stop());
+          stream = null;
+          video.srcObject = null;
+          startCam.innerText = "Start Camera";
+          return;
+        }
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+          video.srcObject = stream;
+          startCam.innerText = "Stop Camera";
+        } catch (err) {
+          alert("Unable to access camera: " + err.message);
+        }
+      };
+
+      snap.onclick = async () => {
+        if (!stream) {
+          alert("Start the camera first.");
+          return;
+        }
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL("image/png");
+
+        const payload = {
+          image_base64: dataUrl,
+          name: nameInput.value || "Anonymous",
+        };
+        const res = await fetch("/predict_live", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (res.ok && !data.error) {
+          showResult(
+            nameInput.value || "You",
+            data.emotion,
+            data.confidence,
+            data.feedback,
+            data.filename
+          );
+        } else {
+          alert(data.error || "Prediction failed");
+        }
+      };
+    </script>
+  </body>
+</html>
