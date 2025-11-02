@@ -3,14 +3,18 @@
 # Compatible with Python 3.12.3
 # If deploying on Render or similar, ensure Python 3.12+ is selected
 ########################################################
+########################################################
+# Requirements for Emotion Detection Web App
+# Compatible with Python 3.10.13 (Render default)
+########################################################
+
 Flask>=2.3.2
 Pillow>=9.5.0
-numpy>=1.26.0
+numpy>=1.21.0
 opencv-python>=4.8.1.78
 matplotlib>=3.7.2
 h5py
 mtcnn
-tflite-runtime>=2.13.0; platform_system != 'Windows'
-# On Windows, tflite-runtime is not available via pip; use full TensorFlow for local dev if needed
-# Python version (for documentation; not a pip directive)
-# python_version >= "3.12.3"
+tflite-runtime>=2.13.0
+
+# python_version == "3.10.13"
