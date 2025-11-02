@@ -1,0 +1,5 @@
+# Patch for app.py to use TFLite instead of TensorFlow
+# 1. Remove TensorFlow imports and model loading
+# 2. Use tflite_runtime.interpreter for inference
+# 3. Load best_fer_model.tflite
+# 4. Update prediction code to use TFLite interpreter
